@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -11,39 +12,24 @@
 
     body {
       margin: 0;
+      padding: 28px 16px;
       min-height: 100vh;
-      padding: 32px 16px;
-      font-family: system-ui, sans-serif;
       color: #f7f3ff;
-      background:
-        radial-gradient(ellipse at top, #49346b 0, transparent 55%),
-        #12101c;
+      font-family: system-ui, sans-serif;
+      background: radial-gradient(ellipse at top, #49346b, transparent 60%), #12101c;
     }
 
-    .container {
-      max-width: 600px;
-      margin: auto;
-    }
-
-    .brand {
-      text-align: center;
-      margin: 20px 0 28px;
-    }
-
-    .logo {
-      font-size: 42px;
-      color: #d7b8ff;
-    }
-
-    h1 { margin: 8px 0; font-size: 30px; }
+    main { max-width: 580px; margin: auto; }
+    header { text-align: center; margin: 20px 0 28px; }
+    header .logo { font-size: 44px; color: #d7b8ff; }
+    h1 { margin: 8px 0; }
     .muted { color: #bcb3cf; line-height: 1.7; }
 
     .panel {
-      padding: 26px;
+      padding: 24px;
       border: 1px solid #504064;
-      border-radius: 22px;
-      background: rgba(30, 25, 44, .94);
-      box-shadow: 0 20px 60px #0003;
+      border-radius: 20px;
+      background: #1e192c;
     }
 
     label {
@@ -55,24 +41,14 @@
     input, select, textarea {
       width: 100%;
       padding: 13px;
-      color: #fff;
-      background: #171322;
       border: 1px solid #514361;
       border-radius: 10px;
+      color: white;
+      background: #171322;
       font: inherit;
     }
 
-    input:focus, select:focus, textarea:focus {
-      outline: 2px solid #b99ae9;
-      outline-offset: 2px;
-    }
-
-    textarea {
-      min-height: 140px;
-      resize: vertical;
-    }
-
-    option { background: #211a30; }
+    textarea { min-height: 130px; resize: vertical; }
 
     button {
       width: 100%;
@@ -80,65 +56,55 @@
       padding: 14px;
       border: 0;
       border-radius: 12px;
+      background: #cbb0fa;
       color: #21162d;
-      background: linear-gradient(100deg, #d9c0ff, #b99af0);
       font: inherit;
-      font-weight: 750;
+      font-weight: bold;
       cursor: pointer;
     }
 
     button:disabled { opacity: .6; cursor: wait; }
 
     #status {
+      display: none;
       margin-top: 16px;
       padding: 12px;
       border-radius: 10px;
-      display: none;
       overflow-wrap: anywhere;
     }
 
     #status.show { display: block; }
     #status.success { background: #173c30; color: #b7f6d8; }
     #status.error { background: #49252e; color: #ffd0d8; }
-
-    .footer {
-      margin: 20px 0;
-      text-align: center;
-      font-size: 13px;
-      color: #a89bb9;
-    }
+    footer { text-align: center; color: #a89bb9; margin: 20px 0; }
 
     @media (max-width: 480px) {
-      body { padding: 18px 12px; }
-      .panel { padding: 19px; }
+      .panel { padding: 18px; }
     }
   </style>
+  <script src="/app.js" defer></script>
 </head>
 <body>
-  <main class="container">
-    <header class="brand">
+  <main>
+    <header>
       <div class="logo">✦</div>
       <h1>Lumi Support</h1>
-      <p class="muted">
-        ศูนย์ช่วยเหลือและแจ้งปัญหา<br>
-        เราพร้อมรับฟังทุกเรื่อง ♡
-      </p>
+      <p class="muted">ศูนย์ช่วยเหลือและแจ้งปัญหา<br>เราพร้อมรับฟังทุกเรื่อง ♡</p>
     </header>
 
     <section class="panel">
       <h2>ส่งรายงานปัญหา</h2>
-      <p class="muted">กรอกรายละเอียดด้านล่างเพื่อส่งเรื่องให้ทีมงานตรวจสอบ</p>
+      <p class="muted">กรอกรายละเอียดเพื่อแจ้งทีมงาน</p>
 
       <form id="reportForm">
         <label for="username">ชื่อผู้แจ้ง</label>
         <input id="username" name="username"
-          minlength="2" maxlength="100"
-          autocomplete="nickname" required
+          minlength="2" maxlength="100" required
           placeholder="ชื่อของคุณ">
 
         <label for="category">ประเภทปัญหา</label>
         <select id="category" name="category" required>
-          <option value="">-- เลือกประเภทปัญหา --</option>
+          <option value="">เลือกประเภทปัญหา</option>
           <option>สมาชิกทำผิดกฎ</option>
           <option>การกลั่นแกล้งหรือคุกคาม</option>
           <option>ปัญหาบอทหรือระบบ</option>
@@ -147,87 +113,19 @@
 
         <label for="details">รายละเอียด</label>
         <textarea id="details" name="details"
-          minlength="10" maxlength="3000"
-          required placeholder="อธิบายสิ่งที่เกิดขึ้น (อย่างน้อย 10 ตัวอักษร)"></textarea>
+          minlength="10" maxlength="3000" required
+          placeholder="อธิบายปัญหาอย่างน้อย 10 ตัวอักษร"></textarea>
 
         <label for="evidence">ลิงก์หลักฐาน (ไม่บังคับ)</label>
-        <input id="evidence" name="evidence"
-          type="url" maxlength="2000"
-          placeholder="https://...">
+        <input id="evidence" name="evidence" type="url"
+          maxlength="2000" placeholder="https://...">
 
-        <button id="submitButton" type="submit">
-          ส่งรายงาน ♡
-        </button>
-
+        <button id="submitButton" type="submit">ส่งรายงาน ♡</button>
         <div id="status" role="status" aria-live="polite"></div>
       </form>
     </section>
 
-    <footer class="footer">
-      Lumi Support ♡ · ขอบคุณที่ช่วยให้ชุมชนดีขึ้น
-    </footer>
+    <footer>Lumi Support ♡</footer>
   </main>
-
-  <script>
-    const form = document.getElementById("reportForm");
-    const button = document.getElementById("submitButton");
-    const statusBox = document.getElementById("status");
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-
-      if (!form.reportValidity()) return;
-
-      const evidence = form.evidence.value.trim();
-
-      if (evidence) {
-        try {
-          if (new URL(evidence).protocol !== "https:") {
-            throw new Error();
-          }
-        } catch {
-          statusBox.className = "show error";
-          statusBox.textContent = "กรุณาใส่ลิงก์หลักฐาน HTTPS ที่ถูกต้อง";
-          return;
-        }
-      }
-
-      button.disabled = true;
-      button.textContent = "กำลังส่งรายงาน...";
-      statusBox.className = "";
-      statusBox.textContent = "";
-
-      try {
-        const response = await fetch("/api/report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: form.username.value.trim(),
-            category: form.category.value,
-            details: form.details.value.trim(),
-            evidence
-          })
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.error || "ส่งรายงานไม่สำเร็จ");
-        }
-
-        statusBox.className = "show success";
-        statusBox.textContent = result.message || "ส่งรายงานสำเร็จแล้ว ♡";
-        form.reset();
-      } catch (error) {
-        statusBox.className = "show error";
-        statusBox.textContent =
-          error.message || "เชื่อมต่อไม่ได้ กรุณาลองใหม่";
-      } finally {
-        button.disabled = false;
-        button.textContent = "ส่งรายงาน ♡";
-      }
-    });
-  </script>
 </body>
 </html>
-
