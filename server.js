@@ -1,16 +1,41 @@
 
+
 const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const path = require("path");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
+// ตั้งค่าความปลอดภัย
 app.use(helmet());
 app.use(express.json({ limit: "15kb" }));
 
-app.use(express.static(path.join(__dirname, "public")));
+// ตำแหน่งไฟล์หน้าเว็บไซต์
+const publicFolder = path.join(__dirname, "public");
+const homePage = path.join(__dirname, "index.html");
 
+// เปิดไฟล์เว็บไซต์ที่อยู่ในโฟลเดอร์ public
+app.use(express.static(publicFolder));
+
+// เปิดหน้าแรกจาก index.html ในโฟลเดอร์หลัก
+app.get("/", (req, res) => {
+  res.sendFile(homePage, (error) => {
+    if (error && !res.headersSent) {
+      res.status(500).send(
+        "ไม่สามารถเปิดหน้าเว็บได้ กรุณาตรวจสอบไฟล์ index.html"
+      );
+    }
+  });
+});
+
+// ตรวจสอบสถานะเซิร์ฟเวอร์
+app.get("/health", (req, res) => {
+  res.status(200).send("Lumi Support OK");
+});
+
+// จำกัดจำนวนการส่งรายงาน
 const reportLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
@@ -18,6 +43,7 @@ const reportLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// API รับรายงานและส่งเข้า Discord
 app.post("/api/report", reportLimiter, async (req, res) => {
   const { username, category, details, evidence } = req.body || {};
   const webhook = process.env.DISCORD_WEBHOOK_URL;
@@ -44,8 +70,7 @@ app.post("/api/report", reportLimiter, async (req, res) => {
     typeof details !== "string" ||
     details.trim().length < 10 ||
     details.length > 3000 ||
-    (evidence !== undefined &&
-      typeof evidence !== "string")
+    (evidence !== undefined && typeof evidence !== "string")
   ) {
     return res.status(400).json({
       error: "กรุณาตรวจสอบข้อมูลที่กรอก"
@@ -58,7 +83,14 @@ app.post("/api/report", reportLimiter, async (req, res) => {
     try {
       const url = new URL(evidence.trim());
 
-      if (url.protocol !== "https:") throw new Error();
+      if (
+        url.protocol !== "https:" ||
+        !url.hostname ||
+        url.username ||
+        url.password
+      ) {
+        throw new Error("Invalid evidence URL");
+      }
 
       proof = url.href.slice(0, 500);
     } catch {
@@ -71,7 +103,9 @@ app.post("/api/report", reportLimiter, async (req, res) => {
   try {
     const response = await fetch(webhook, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
         allowed_mentions: { parse: [] },
         embeds: [{
@@ -92,39 +126,41 @@ app.post("/api/report", reportLimiter, async (req, res) => {
               value: proof
             }] : [])
           ],
-          footer: { text: "Lumi Support ♡" },
+          footer: {
+            text: "Lumi Support ♡"
+          },
           timestamp: new Date().toISOString()
         }]
       })
     });
 
     if (!response.ok) {
-      console.error("Discord webhook returned:", response.status);
-      throw new Error("Discord error");
+      console.error("Discord error:", response.status);
+
+      return res.status(502).json({
+        error: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่"
+      });
     }
 
     return res.json({
       message: "ส่งรายงานสำเร็จแล้ว ♡"
     });
   } catch (error) {
-    console.error("Report delivery failed:", error.message);
+    console.error("ส่งรายงานผิดพลาด:", error.message);
 
     return res.status(502).json({
-      error: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่"
+      error: "ไม่สามารถเชื่อมต่อ Discord ได้"
     });
   }
 });
 
-app.get("/health", (req, res) => {
-  res.send("Lumi Support OK");
-});
-
+// หน้าที่ไม่มีอยู่
 app.use((req, res) => {
   res.status(404).send("ไม่พบหน้าที่ต้องการ");
 });
 
-const port = process.env.PORT || 3000;
-
-app.listen(port, "0.0.0.0", () => {
-  console.log("Lumi Support started on port " + port);
+// เริ่มเซิร์ฟเวอร์
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Lumi Support started on port " + PORT);
 });
+
