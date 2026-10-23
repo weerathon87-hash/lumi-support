@@ -1,5 +1,4 @@
 
-
 const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -12,14 +11,13 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet());
 app.use(express.json({ limit: "15kb" }));
 
-// ตำแหน่งไฟล์หน้าเว็บไซต์
+// ตำแหน่งไฟล์เว็บไซต์
 const publicFolder = path.join(__dirname, "public");
 const homePage = path.join(__dirname, "index.html");
 
-// เปิดไฟล์เว็บไซต์ที่อยู่ในโฟลเดอร์ public
+// เปิดเว็บไซต์
 app.use(express.static(publicFolder));
 
-// เปิดหน้าแรกจาก index.html ในโฟลเดอร์หลัก
 app.get("/", (req, res) => {
   res.sendFile(homePage, (error) => {
     if (error && !res.headersSent) {
@@ -43,6 +41,72 @@ const reportLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// รอเวลาตามที่กำหนด
+const sleep = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+// ส่งรายงานเข้า Discord พร้อมจัดการ Error 429
+async function sendDiscordWebhook(webhook, payload) {
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(webhook, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    });
+
+    // ส่งสำเร็จ
+    if (response.ok) {
+      return;
+    }
+
+    // อ่านรายละเอียด Error
+    const body = await response.text();
+
+    // ถ้าไม่ใช่ 429 หรือหมดจำนวนครั้งที่ลองแล้ว
+    if (response.status !== 429 || attempt === maxRetries) {
+      console.error("Discord HTTP:", response.status);
+      throw new Error(`Discord HTTP ${response.status}`);
+    }
+
+    // อ่านเวลาที่ Discord ให้รอ
+    let retryAfter = Number(
+      response.headers.get("Retry-After")
+    );
+
+    try {
+      const data = JSON.parse(body);
+
+      if (Number.isFinite(data.retry_after)) {
+        retryAfter = data.retry_after;
+      }
+    } catch {
+      // ใช้ค่า Retry-After จาก response header
+    }
+
+    if (!Number.isFinite(retryAfter) || retryAfter < 0) {
+      throw new Error("ไม่พบเวลารอจาก Discord");
+    }
+
+    // ถ้าต้องรอนาน ให้หยุดก่อน ไม่ส่งซ้ำ
+    if (retryAfter > 30) {
+      throw new Error(
+        `Discord ขอให้รอ ${retryAfter} วินาที`
+      );
+    }
+
+    console.warn(
+      `Discord 429: รอ ${retryAfter} วินาที`
+    );
+
+    await sleep(retryAfter * 1000 + 250);
+  }
+}
+
 // API รับรายงานและส่งเข้า Discord
 app.post("/api/report", reportLimiter, async (req, res) => {
   const { username, category, details, evidence } = req.body || {};
@@ -61,6 +125,7 @@ app.post("/api/report", reportLimiter, async (req, res) => {
     });
   }
 
+  // ตรวจสอบข้อมูล
   if (
     typeof username !== "string" ||
     username.trim().length < 2 ||
@@ -77,6 +142,7 @@ app.post("/api/report", reportLimiter, async (req, res) => {
     });
   }
 
+  // ตรวจสอบลิงก์หลักฐาน
   let proof = "";
 
   if (evidence && evidence.trim()) {
@@ -100,56 +166,49 @@ app.post("/api/report", reportLimiter, async (req, res) => {
     }
   }
 
-  try {
-    const response = await fetch(webhook, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
+  // สร้างรายงาน
+  const payload = {
+    allowed_mentions: { parse: [] },
+    embeds: [{
+      title: "📩 มีรายงานปัญหาใหม่",
+      color: 0x8B72CF,
+      description: details.trim(),
+      fields: [
+        {
+          name: "ชื่อผู้แจ้ง",
+          value: username.trim()
+        },
+        {
+          name: "ประเภทปัญหา",
+          value: category
+        },
+        ...(proof ? [{
+          name: "หลักฐาน",
+          value: proof
+        }] : [])
+      ],
+      footer: {
+        text: "Lumi Support ♡"
       },
-      body: JSON.stringify({
-        allowed_mentions: { parse: [] },
-        embeds: [{
-          title: "📩 มีรายงานปัญหาใหม่",
-          color: 0x8B72CF,
-          description: details.trim(),
-          fields: [
-            {
-              name: "ชื่อผู้แจ้ง",
-              value: username.trim()
-            },
-            {
-              name: "ประเภทปัญหา",
-              value: category
-            },
-            ...(proof ? [{
-              name: "หลักฐาน",
-              value: proof
-            }] : [])
-          ],
-          footer: {
-            text: "Lumi Support ♡"
-          },
-          timestamp: new Date().toISOString()
-        }]
-      })
-    });
+      timestamp: new Date().toISOString()
+    }]
+  };
 
-    if (!response.ok) {
-      console.error("Discord error:", response.status);
-
-      return res.status(502).json({
-        error: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่"
-      });
-    }
+  try {
+    // ส่งรายงานด้วยระบบจัดการ 429
+    await sendDiscordWebhook(webhook, payload);
 
     return res.json({
       message: "ส่งรายงานสำเร็จแล้ว ♡"
     });
   } catch (error) {
-    console.error("ส่งรายงานผิดพลาด:", error.message);
+    console.error(
+      "ส่งรายงานผิดพลาด:",
+      error.message
+    );
 
     return res.status(502).json({
-      error: "ไม่สามารถเชื่อมต่อ Discord ได้"
+      error: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่ภายหลัง"
     });
   }
 });
@@ -163,4 +222,3 @@ app.use((req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Lumi Support started on port " + PORT);
 });
-
