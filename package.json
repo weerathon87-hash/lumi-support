@@ -1,0 +1,123 @@
+json
+
+{
+  "name": "lumi-support",
+  "version": "1.0.0",
+  "private": true,
+  "description": "เว็บไซต์แจ้งปัญหา Discord ภาษาไทย",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0"
+  }
+}
+6. เลื่อนลงด้านล่าง กด Commit changes แล้วกดยืนยันอีกครั้ง
+
+ไฟล์นี้ใช้ระบุแพ็กเกจที่จำเป็นสำหรับเปิดเว็บบน Render ครับ
+
+ขั้นที่ 4: สร้างไฟล์ server.js
+ทำเหมือนเดิมอีกครั้ง โดยกด Add file → Create new file แล้วตั้งชื่อ server.js
+
+คัดลอกโค้ดนี้ไปวางได้เลย
+
+
+javascript
+
+const express = require("express");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+
+const app = express();
+
+app.use(helmet());
+app.use(express.json({ limit: "15kb" }));
+app.use(express.static("public"));
+
+app.post(
+  "/api/report",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5
+  }),
+  async (req, res) => {
+    const { username, category, details, evidence } = req.body || {};
+    const webhook = process.env.DISCORD_WEBHOOK_URL;
+
+    const categories = [
+      "สมาชิกทำผิดกฎ",
+      "การกลั่นแกล้งหรือคุกคาม",
+      "ปัญหาบอทหรือระบบ",
+      "ปัญหาอื่น ๆ"
+    ];
+
+    if (
+      !webhook ||
+      typeof username !== "string" ||
+      username.trim().length < 2 ||
+      username.length > 100 ||
+      !categories.includes(category) ||
+      typeof details !== "string" ||
+      details.trim().length < 10 ||
+      details.length > 3000
+    ) {
+      return res.status(400).json({
+        error: "กรุณาตรวจสอบข้อมูลหรือการตั้งค่าระบบ"
+      });
+    }
+
+    let proof = "";
+
+    if (evidence) {
+      try {
+        const url = new URL(evidence);
+        if (url.protocol !== "https:") throw new Error();
+        proof = url.href.slice(0, 500);
+      } catch {
+        return res.status(400).json({
+          error: "ลิงก์หลักฐานไม่ถูกต้อง"
+        });
+      }
+    }
+
+    try {
+      const response = await fetch(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          allowed_mentions: { parse: [] },
+          embeds: [{
+            title: "📩 มีรายงานปัญหาใหม่",
+            color: 0x8B72CF,
+            fields: [
+              { name: "ชื่อผู้แจ้ง", value: username.trim() },
+              { name: "ประเภทปัญหา", value: category },
+              { name: "รายละเอียด", value: details.trim() },
+              ...(proof ? [{ name: "หลักฐาน", value: proof }] : [])
+            ],
+            footer: { text: "Lumi Support ♡" },
+            timestamp: new Date().toISOString()
+          }]
+        })
+      });
+
+      if (!response.ok) throw new Error("Discord webhook failed");
+
+      res.json({ message: "ส่งรายงานสำเร็จแล้ว ♡" });
+    } catch {
+      res.status(502).json({
+        error: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่"
+      });
+    }
+  }
+);
+
+app.get("/health", (req, res) => res.send("Lumi Support OK"));
+
+const port = process.env.PORT || 3000;
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Lumi Support running on port ${port}`);
+});
