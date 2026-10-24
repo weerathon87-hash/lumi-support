@@ -7,142 +7,104 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ตั้งค่าความปลอดภัย
 app.use(helmet());
 app.use(express.json({ limit: "15kb" }));
 
-// ตำแหน่งไฟล์เว็บไซต์
 const publicFolder = path.join(__dirname, "public");
 const homePage = path.join(__dirname, "index.html");
 
-// เปิดเว็บไซต์
 app.use(express.static(publicFolder));
 
 app.get("/", (req, res) => {
   res.sendFile(homePage, (error) => {
     if (error && !res.headersSent) {
-      res.status(500).send(
-        "ไม่สามารถเปิดหน้าเว็บได้ กรุณาตรวจสอบไฟล์ index.html"
-      );
+      console.error("เปิด index.html ไม่สำเร็จ:", error.message);
+      res.status(500).send("ไม่สามารถเปิดหน้าเว็บได้");
     }
   });
 });
 
-// ตรวจสอบสถานะเซิร์ฟเวอร์
 app.get("/health", (req, res) => {
   res.status(200).send("Lumi Support OK");
 });
 
-// จำกัดจำนวนการส่งรายงาน
 const reportLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: "draft-8",
-  legacyHeaders: false
+  legacyHeaders: false,
+  message: {
+    error: "ส่งรายงานบ่อยเกินไป กรุณารอสักครู่"
+  }
 });
 
-// รอเวลาตามที่กำหนด
-const sleep = (ms) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const categories = [
+  "สมาชิกทำผิดกฎ",
+  "การกลั่นแกล้งหรือคุกคาม",
+  "ปัญหาบอทหรือระบบ",
+  "ปัญหาอื่น ๆ"
+];
 
-// ส่งรายงานเข้า Discord พร้อมจัดการ Error 429
 async function sendDiscordWebhook(webhook, payload) {
-  const maxRetries = 3;
+  let response;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const response = await fetch(webhook, {
+  try {
+    response = await fetch(webhook, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(15000)
     });
-
-    // ส่งสำเร็จ
-    if (response.ok) {
-      return;
-    }
-
-    // อ่านรายละเอียด Error
-    const body = await response.text();
-
-    // ถ้าไม่ใช่ 429 หรือหมดจำนวนครั้งที่ลองแล้ว
-    if (response.status !== 429 || attempt === maxRetries) {
-      console.error("Discord HTTP:", response.status);
-      throw new Error(`Discord HTTP ${response.status}`);
-    }
-
-    // อ่านเวลาที่ Discord ให้รอ
-    let retryAfter = Number(
-      response.headers.get("Retry-After")
-    );
-
-    try {
-      const data = JSON.parse(body);
-
-      if (Number.isFinite(data.retry_after)) {
-        retryAfter = data.retry_after;
-      }
-    } catch {
-      // ใช้ค่า Retry-After จาก response header
-    }
-
-    if (!Number.isFinite(retryAfter) || retryAfter < 0) {
-      throw new Error("ไม่พบเวลารอจาก Discord");
-    }
-
-    // ถ้าต้องรอนาน ให้หยุดก่อน ไม่ส่งซ้ำ
-    if (retryAfter > 30) {
-      throw new Error(
-        `Discord ขอให้รอ ${retryAfter} วินาที`
-      );
-    }
-
-    console.warn(
-      `Discord 429: รอ ${retryAfter} วินาที`
-    );
-
-    await sleep(retryAfter * 1000 + 250);
+  } catch (error) {
+    console.error("Discord connection error:", error.name, error.message);
+    throw new Error("เชื่อมต่อ Discord ไม่สำเร็จ");
   }
+
+  if (response.ok) {
+    return;
+  }
+
+  const body = await response.text();
+
+  // ไม่บันทึก Webhook URL ลง Logs
+  console.error("Discord HTTP status:", response.status);
+  console.error("Discord response:", body.slice(0, 1000));
+
+  throw new Error(`Discord HTTP ${response.status}`);
 }
 
-// API รับรายงานและส่งเข้า Discord
 app.post("/api/report", reportLimiter, async (req, res) => {
+  console.log("ได้รับคำขอส่งรายงานแล้ว");
+
   const { username, category, details, evidence } = req.body || {};
   const webhook = process.env.DISCORD_WEBHOOK_URL;
 
-  const categories = [
-    "สมาชิกทำผิดกฎ",
-    "การกลั่นแกล้งหรือคุกคาม",
-    "ปัญหาบอทหรือระบบ",
-    "ปัญหาอื่น ๆ"
-  ];
-
   if (!webhook) {
+    console.error("ไม่พบ DISCORD_WEBHOOK_URL ใน Environment");
     return res.status(500).json({
       error: "ระบบยังไม่ได้ตั้งค่า Discord"
     });
   }
 
-  // ตรวจสอบข้อมูล
   if (
     typeof username !== "string" ||
     username.trim().length < 2 ||
-    username.length > 100 ||
+    username.trim().length > 100 ||
     typeof category !== "string" ||
     !categories.includes(category) ||
     typeof details !== "string" ||
     details.trim().length < 10 ||
-    details.length > 3000 ||
-    (evidence !== undefined && typeof evidence !== "string")
+    details.trim().length > 3000 ||
+    (evidence !== undefined &&
+      (typeof evidence !== "string" || evidence.length > 2000))
   ) {
     return res.status(400).json({
       error: "กรุณาตรวจสอบข้อมูลที่กรอก"
     });
   }
 
-  // ตรวจสอบลิงก์หลักฐาน
   let proof = "";
 
   if (evidence && evidence.trim()) {
@@ -155,7 +117,7 @@ app.post("/api/report", reportLimiter, async (req, res) => {
         url.username ||
         url.password
       ) {
-        throw new Error("Invalid evidence URL");
+        throw new Error("Invalid URL");
       }
 
       proof = url.href.slice(0, 500);
@@ -166,7 +128,6 @@ app.post("/api/report", reportLimiter, async (req, res) => {
     }
   }
 
-  // สร้างรายงาน
   const payload = {
     allowed_mentions: { parse: [] },
     embeds: [{
@@ -182,10 +143,9 @@ app.post("/api/report", reportLimiter, async (req, res) => {
           name: "ประเภทปัญหา",
           value: category
         },
-        ...(proof ? [{
-          name: "หลักฐาน",
-          value: proof
-        }] : [])
+        ...(proof
+          ? [{ name: "หลักฐาน", value: proof }]
+          : [])
       ],
       footer: {
         text: "Lumi Support ♡"
@@ -195,17 +155,15 @@ app.post("/api/report", reportLimiter, async (req, res) => {
   };
 
   try {
-    // ส่งรายงานด้วยระบบจัดการ 429
     await sendDiscordWebhook(webhook, payload);
 
-    return res.json({
+    console.log("ส่งรายงานไป Discord สำเร็จ");
+
+    return res.status(200).json({
       message: "ส่งรายงานสำเร็จแล้ว ♡"
     });
   } catch (error) {
-    console.error(
-      "ส่งรายงานผิดพลาด:",
-      error.message
-    );
+    console.error("ส่งรายงานผิดพลาด:", error.message);
 
     return res.status(502).json({
       error: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่ภายหลัง"
@@ -213,12 +171,29 @@ app.post("/api/report", reportLimiter, async (req, res) => {
   }
 });
 
-// หน้าที่ไม่มีอยู่
+// จัดการ JSON ที่ส่งมาไม่ถูกต้อง
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && "body" in error) {
+    return res.status(400).json({
+      error: "รูปแบบข้อมูลไม่ถูกต้อง"
+    });
+  }
+
+  console.error("Server error:", error.message);
+
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  return res.status(500).json({
+    error: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์"
+  });
+});
+
 app.use((req, res) => {
   res.status(404).send("ไม่พบหน้าที่ต้องการ");
 });
 
-// เริ่มเซิร์ฟเวอร์
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Lumi Support started on port " + PORT);
+  console.log(`Lumi Support started on port ${PORT}`);
 });
