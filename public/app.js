@@ -5,7 +5,7 @@ const SUPABASE_FUNCTION_URL =
   "https://jonmdnlmmxnibsclftix.supabase.co/functions/v1/lumi-report";
 
 // ใส่ Supabase Publishable key ในบรรทัดนี้
-const SUPABASE_PUBLISHABLE_KEY = "ใส่_PUBLISHABLE_KEY_ตรงนี้";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_lGPdtXs0tL9tkzBHC5tAFg_RZCsufDM";
 
 const form = document.getElementById("reportForm");
 const button = document.getElementById("submitButton");
