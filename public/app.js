@@ -1,4 +1,7 @@
+app.post("/api/report", reportLimiter, async (req, res) => {
+  console.log("ได้รับคำขอส่งรายงานแล้ว");
 
+  
 const form = document.getElementById("reportForm");
 const button = document.getElementById("submitButton");
 const statusBox = document.getElementById("status");
