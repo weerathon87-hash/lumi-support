@@ -1,6 +1,12 @@
 
 "use strict";
 
+const SUPABASE_FUNCTION_URL =
+  "https://jonmdnlmmxnibsclftix.supabase.co/functions/v1/lumi-report";
+
+// ใส่ Supabase Publishable key ในบรรทัดนี้
+const SUPABASE_PUBLISHABLE_KEY = "ใส่_PUBLISHABLE_KEY_ตรงนี้";
+
 const form = document.getElementById("reportForm");
 const button = document.getElementById("submitButton");
 const statusBox = document.getElementById("status");
@@ -23,15 +29,9 @@ form.addEventListener("submit", async (event) => {
   if (evidence) {
     try {
       const url = new URL(evidence);
-
-      if (url.protocol !== "https:") {
-        throw new Error();
-      }
+      if (url.protocol !== "https:") throw new Error();
     } catch {
-      showStatus(
-        "ลิงก์หลักฐานต้องเป็น HTTPS ที่ถูกต้อง",
-        "error"
-      );
+      showStatus("ลิงก์หลักฐานต้องเป็น HTTPS ที่ถูกต้อง", "error");
       return;
     }
   }
@@ -45,13 +45,14 @@ form.addEventListener("submit", async (event) => {
 
   button.disabled = true;
   button.textContent = "กำลังส่งรายงาน...";
-  showStatus("กำลังส่งรายงาน กรุณารอสักครู่", "success");
+  showStatus("กำลังบันทึกรายงาน กรุณารอสักครู่", "success");
 
   try {
-    const response = await fetch("/api/report", {
+    const response = await fetch(SUPABASE_FUNCTION_URL, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_PUBLISHABLE_KEY
       },
       body: JSON.stringify(payload)
     });
@@ -65,17 +66,16 @@ form.addEventListener("submit", async (event) => {
     }
 
     showStatus(
-      data.message || "ส่งรายงานสำเร็จแล้ว ♡",
-      "success"
+      data.message || "บันทึกรายงานแล้ว",
+      data.discordSent === false ? "error" : "success"
     );
 
-    form.reset();
+    if (data.saved) form.reset();
   } catch (error) {
     console.error("Lumi Support:", error);
-
     showStatus(
       error.message === "Failed to fetch"
-        ? "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่"
+        ? "เชื่อมต่อระบบรับรายงานไม่ได้ กรุณาตรวจสอบการตั้งค่า"
         : error.message || "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่",
       "error"
     );
